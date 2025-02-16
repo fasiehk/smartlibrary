@@ -9,8 +9,7 @@ class ManageBooksScreen extends StatefulWidget {
 
 class _ManageBooksScreenState extends State<ManageBooksScreen> {
   List<Map<String, dynamic>> books = [];
-  final TextEditingController titleController = TextEditingController();
-  final TextEditingController authorController = TextEditingController();
+  bool isLoading = true;
 
   @override
   void initState() {
@@ -19,72 +18,108 @@ class _ManageBooksScreenState extends State<ManageBooksScreen> {
   }
 
   Future<void> fetchBooks() async {
-    final response = await SupabaseService.getBooks();
-    if (response != null) {
-      setState(() {
-        books = response;
-      });
-    }
+    final fetchedBooks = await SupabaseService.getBooks();
+    setState(() {
+      books = fetchedBooks!;
+      isLoading = false;
+    });
   }
 
-  Future<void> addBook() async {
-    if (titleController.text.isNotEmpty && authorController.text.isNotEmpty) {
-      await SupabaseService.addBook(titleController.text, authorController.text);
-      titleController.clear();
-      authorController.clear();
-      fetchBooks(); // Refresh book list
-    }
+  void _showBookDialog({Map<String, dynamic>? book}) {
+    TextEditingController titleController =
+    TextEditingController(text: book?['title'] ?? '');
+    TextEditingController authorController =
+    TextEditingController(text: book?['author'] ?? '');
+    String? bookId = book?['id'];
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(bookId == null ? "Add Book" : "Edit Book"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(controller: titleController, decoration: InputDecoration(labelText: "Title")),
+            TextField(controller: authorController, decoration: InputDecoration(labelText: "Author")),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel")),
+          ElevatedButton(
+            onPressed: () async {
+              if (titleController.text.isNotEmpty && authorController.text.isNotEmpty) {
+                if (bookId == null) {
+                  await SupabaseService.addBook(titleController.text, authorController.text);
+                } else {
+                  await SupabaseService.updateBook(bookId, titleController.text, authorController.text);
+                }
+                fetchBooks();
+                Navigator.pop(context);
+              }
+            },
+            child: Text(bookId == null ? "Add" : "Update"),
+          ),
+        ],
+      ),
+    );
   }
 
-  Future<void> deleteBook(String bookId) async {
+  void _deleteBook(String bookId) async {
     await SupabaseService.deleteBook(bookId);
-    fetchBooks(); // Refresh book list
+    fetchBooks();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text("Manage Books")),
-      drawer: AdminSidebar(),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            TextField(
-              controller: titleController,
-              decoration: InputDecoration(labelText: "Book Title"),
-            ),
-            TextField(
-              controller: authorController,
-              decoration: InputDecoration(labelText: "Author"),
-            ),
-            SizedBox(height: 10),
-            ElevatedButton(
-              onPressed: addBook,
-              child: Text("Add Book"),
-            ),
-            SizedBox(height: 20),
-            Expanded(
-              child: books.isEmpty
-                  ? Center(child: CircularProgressIndicator())
-                  : ListView.builder(
-                itemCount: books.length,
-                itemBuilder: (context, index) {
-                  var book = books[index];
-                  return ListTile(
-                    leading: Icon(Icons.book, color: Colors.blue),
-                    title: Text(book["title"] ?? "No Title"),
-                    subtitle: Text(book["author"] ?? "No Author"),
-                    trailing: IconButton(
-                      icon: Icon(Icons.delete, color: Colors.red),
-                      onPressed: () => deleteBook(book["id"]),
+      body: Row(
+        children: [
+          AdminSidebar(),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  ElevatedButton.icon(
+                    onPressed: () => _showBookDialog(),
+                    icon: Icon(Icons.add),
+                    label: Text("Add Book"),
+                  ),
+                  SizedBox(height: 20),
+                  isLoading
+                      ? Center(child: CircularProgressIndicator())
+                      : Expanded(
+                    child: ListView.builder(
+                      itemCount: books.length,
+                      itemBuilder: (context, index) {
+                        var book = books[index];
+                        return ListTile(
+                          leading: Icon(Icons.book, color: Colors.blue),
+                          title: Text(book["title"] ?? "No Title"),
+                          subtitle: Text("Author: ${book["author"] ?? "Unknown"}"),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: Icon(Icons.edit, color: Colors.orange),
+                                onPressed: () => _showBookDialog(book: book),
+                              ),
+                              IconButton(
+                                icon: Icon(Icons.delete, color: Colors.red),
+                                onPressed: () => _deleteBook(book['id']),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

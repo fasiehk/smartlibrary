@@ -10,6 +10,7 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   int totalUsers = 0;
   int totalBooks = 0;
+  int pendingRequests = 0;
 
   @override
   void initState() {
@@ -18,15 +19,17 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Future<void> fetchDashboardData() async {
-    // Fetch users and books in parallel
+    // Fetch all data in parallel
     final usersFuture = SupabaseService.getTotalUsers();
     final booksFuture = SupabaseService.getBookCount();
+    final requestsFuture = SupabaseService.getPendingRequestsCount();
 
-    final results = await Future.wait([usersFuture, booksFuture]);
+    final results = await Future.wait([usersFuture, booksFuture, requestsFuture]);
 
     setState(() {
       totalUsers = results[0] ?? 0;
       totalBooks = results[1] ?? 0;
+      pendingRequests = results[2] ?? 0;
     });
   }
 
@@ -49,9 +52,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     mainAxisSpacing: 16.0,
                     children: [
                       _buildDashboardCard("Total Users", "$totalUsers", Icons.people),
-                      _buildDashboardCard("Total Books", "$totalBooks", Icons.book), // ✅ Now dynamic
+                      _buildDashboardCard("Total Books", "$totalBooks", Icons.book),
+                      _buildDashboardCard("Pending Requests", "$pendingRequests", Icons.pending), // ✅ Dynamic
                       _buildDashboardCard("Most Popular Genre", "Fiction", Icons.category),
-                      _buildDashboardCard("Pending Requests", "15", Icons.pending),
                     ],
                   ),
                 ),

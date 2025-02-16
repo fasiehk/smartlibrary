@@ -27,6 +27,7 @@ class SupabaseService {
 
   // ✅ Add a new book
   static Future<void> addBook(String title, String author) async {
+
     await client.from('Books').insert({'title': title, 'author': author});
   }
 
@@ -42,8 +43,18 @@ class SupabaseService {
     final response = await client.from('Books').select();
     return response.length; // Get the length of the returned list
   }
+  static Future<int> getPendingRequestsCount() async {
+    final response = await client
+        .from('requests')
+        .select()
+        .eq('status', 'pending'); // Fetch only rows where status = 'pending'
+    return response.length;
+  }
 
-  // ✅ Fetch all books
+
+  static Future<void> updateBook(String bookId, String title, String author) async {
+    await client.from('books').update({'title': title, 'author': author}).eq('id', bookId);
+  }
 
 
 
