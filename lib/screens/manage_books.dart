@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/admin_sidebar.dart';
 import '../services/supabase_service.dart';
+import '../models/book.dart';
 
 class ManageBooksScreen extends StatefulWidget {
   @override
@@ -8,118 +9,151 @@ class ManageBooksScreen extends StatefulWidget {
 }
 
 class _ManageBooksScreenState extends State<ManageBooksScreen> {
-  List<Map<String, dynamic>> books = [];
-  bool isLoading = true;
+  List<Book> searchResults = [];
+  List<Book> storedBooks = [];
+  bool isLoading = false;
+  final TextEditingController searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    fetchBooks();
+    fetchStoredBooks();
   }
 
-  Future<void> fetchBooks() async {
-    final fetchedBooks = await SupabaseService.getBooks();
+  // ✅ Fetch stored books from Supabase
+  Future<void> fetchStoredBooks() async {
+    final books = await SupabaseService.getStoredBooks();
     setState(() {
-      books = fetchedBooks!;
+      storedBooks = books;
+    });
+  }
+
+  // ✅ Fetch books from OpenLibrary API
+  Future<void> searchBooks() async {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      final books = await SupabaseService.fetchBooksFromAPI(searchController.text);
+      setState(() {
+        searchResults = books;
+      });
+    } catch (e) {
+      print('Error fetching books: $e');
+    }
+
+    setState(() {
       isLoading = false;
     });
   }
 
-  void _showBookDialog({Map<String, dynamic>? book}) {
-    TextEditingController titleController =
-    TextEditingController(text: book?['title'] ?? '');
-    TextEditingController authorController =
-    TextEditingController(text: book?['author'] ?? '');
-    String? bookId = book?['id'];
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(bookId == null ? "Add Book" : "Edit Book"),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: titleController, decoration: InputDecoration(labelText: "Title")),
-            TextField(controller: authorController, decoration: InputDecoration(labelText: "Author")),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text("Cancel")),
-          ElevatedButton(
-            onPressed: () async {
-              if (titleController.text.isNotEmpty && authorController.text.isNotEmpty) {
-                if (bookId == null) {
-                  await SupabaseService.addBook(titleController.text, authorController.text);
-                } else {
-                  await SupabaseService.updateBook(bookId, titleController.text, authorController.text);
-                }
-                fetchBooks();
-                Navigator.pop(context);
-              }
-            },
-            child: Text(bookId == null ? "Add" : "Update"),
-          ),
-        ],
-      ),
-    );
+  // ✅ Add book to Supabase
+  Future<void> addBookToSupabase(Book book) async {
+    await SupabaseService.addBookToSupabase(book);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${book.title} added!')));
+    fetchStoredBooks(); // Refresh stored books list
   }
 
-  void _deleteBook(String bookId) async {
+  // ✅ Delete book from Supabase
+  Future<void> deleteBookFromSupabase(String bookId) async {
     await SupabaseService.deleteBook(bookId);
-    fetchBooks();
+    fetchStoredBooks();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text("Manage Books")),
-      body: Row(
-        children: [
-          AdminSidebar(),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                children: [
-                  ElevatedButton.icon(
-                    onPressed: () => _showBookDialog(),
-                    icon: Icon(Icons.add),
-                    label: Text("Add Book"),
-                  ),
-                  SizedBox(height: 20),
-                  isLoading
-                      ? Center(child: CircularProgressIndicator())
-                      : Expanded(
-                    child: ListView.builder(
-                      itemCount: books.length,
-                      itemBuilder: (context, index) {
-                        var book = books[index];
-                        return ListTile(
-                          leading: Icon(Icons.book, color: Colors.blue),
-                          title: Text(book["title"] ?? "No Title"),
-                          subtitle: Text("Author: ${book["author"] ?? "Unknown"}"),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(Icons.edit, color: Colors.orange),
-                                onPressed: () => _showBookDialog(book: book),
-                              ),
-                              IconButton(
-                                icon: Icon(Icons.delete, color: Colors.red),
-                                onPressed: () => _deleteBook(book['id']),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
+      drawer: AdminSidebar(),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Search Bar
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      labelText: "Search books by title",
+                      border: OutlineInputBorder(),
                     ),
                   ),
-                ],
+                ),
+                SizedBox(width: 10),
+                ElevatedButton.icon(
+                  icon: Icon(Icons.search),
+                  label: Text("Search"),
+                  onPressed: searchBooks,
+                ),
+              ],
+            ),
+            SizedBox(height: 20),
+
+            // Search Results Section
+            Text("Search Results", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Expanded(
+              child: isLoading
+                  ? Center(child: CircularProgressIndicator())
+                  : searchResults.isNotEmpty
+                  ? ListView.builder(
+                itemCount: searchResults.length,
+                itemBuilder: (context, index) {
+                  var book = searchResults[index];
+                  return Card(
+                    child: ListTile(
+                      leading: book.coverUrl.isNotEmpty
+                          ? Image.network(book.coverUrl, width: 50, height: 50, fit: BoxFit.cover)
+                          : Icon(Icons.book),
+                      title: Text(book.title),
+                      subtitle: Text("Author: ${book.author}"),
+                      trailing: IconButton(
+                        icon: Icon(Icons.add, color: Colors.green),
+                        onPressed: () => addBookToSupabase(book),
+                      ),
+                    ),
+                  );
+                },
+              )
+                  : Center(child: Text("No results found")),
+            ),
+
+            Divider(),
+
+            // Stored Books Section
+            Text("Stored Books", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Expanded(
+              child: storedBooks.isEmpty
+                  ? Center(child: Text("No stored books"))
+                  : ListView.builder(
+                itemCount: storedBooks.length,
+                itemBuilder: (context, index) {
+                  var book = storedBooks[index];
+                  return Card(
+                    child: ListTile(
+                      leading: book.coverUrl.isNotEmpty
+                          ? Image.network(book.coverUrl, width: 50, height: 50, fit: BoxFit.cover)
+                          : Icon(Icons.book),
+                      title: Text(book.title),
+                      subtitle: Text("Author: ${book.author}"),
+                      trailing: IconButton(
+                        icon: Icon(Icons.delete, color: Colors.red),
+                        onPressed: () async {
+                          await SupabaseService.deleteBook(book.id); // Ensure book.id is correct
+                          fetchStoredBooks(); // Refresh the list after deletion
+                        },
+                      ),
+
+                    ),
+                  );
+                },
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

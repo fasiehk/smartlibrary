@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../widgets/admin_sidebar.dart';
-import '../services/supabase_service.dart'; // Import Supabase service file
+import '../services/supabase_service.dart';
+import 'auth_screen.dart'; // Import your login screen
 
 class AdminDashboard extends StatefulWidget {
   @override
@@ -10,7 +11,6 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   int totalUsers = 0;
   int totalBooks = 0;
-  int pendingRequests = 0;
 
   @override
   void initState() {
@@ -19,18 +19,23 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Future<void> fetchDashboardData() async {
-    // Fetch all data in parallel
-    final usersFuture = SupabaseService.getTotalUsers();
-    final booksFuture = SupabaseService.getBookCount();
-    final requestsFuture = SupabaseService.getPendingRequestsCount();
-
-    final results = await Future.wait([usersFuture, booksFuture, requestsFuture]);
+    int? userCount = await SupabaseService.getTotalUsers();
+    int? bookCount = await SupabaseService.getTotalBooks(); // Fetch books dynamically
 
     setState(() {
-      totalUsers = results[0] ?? 0;
-      totalBooks = results[1] ?? 0;
-      pendingRequests = results[2] ?? 0;
+      if (userCount != null) totalUsers = userCount;
+      if (bookCount != null) totalBooks = bookCount;
     });
+  }
+
+  Future<void> _logout() async {
+    await SupabaseService.signOut(); // Call the signOut function
+    if (mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => AuthScreen()), // Navigate to login
+      );
+    }
   }
 
   @override
@@ -39,22 +44,31 @@ class _AdminDashboardState extends State<AdminDashboard> {
       builder: (context, constraints) {
         bool isLargeScreen = constraints.maxWidth > 800;
         return Scaffold(
-          appBar: AppBar(title: Text("Admin Dashboard")),
+          appBar: AppBar(
+            title: Text("Admin Dashboard"),
+            actions: [
+              IconButton(
+                icon: Icon(Icons.logout),
+                onPressed: _logout, // Logout button
+                tooltip: "Logout",
+              ),
+            ],
+          ),
           body: Row(
             children: [
-              if (isLargeScreen) AdminSidebar(), // ✅ Keep sidebar visible on large screens
+              if (isLargeScreen) AdminSidebar(), // ✅ Sidebar for large screens
               Expanded(
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: GridView.count(
-                    crossAxisCount: isLargeScreen ? 3 : 2, // Adjust based on screen size
+                    crossAxisCount: isLargeScreen ? 3 : 2,
                     crossAxisSpacing: 16.0,
                     mainAxisSpacing: 16.0,
                     children: [
                       _buildDashboardCard("Total Users", "$totalUsers", Icons.people),
                       _buildDashboardCard("Total Books", "$totalBooks", Icons.book),
-                      _buildDashboardCard("Pending Requests", "$pendingRequests", Icons.pending), // ✅ Dynamic
                       _buildDashboardCard("Most Popular Genre", "Fiction", Icons.category),
+                      _buildDashboardCard("Pending Requests", "15", Icons.pending),
                     ],
                   ),
                 ),
